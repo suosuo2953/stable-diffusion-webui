@@ -176,6 +176,14 @@ class ExtrasBatchImagesResponse(ExtraBaseResponse):
 class PNGInfoRequest(BaseModel):
     image: str = Field(title="Image", description="The base64 encoded PNG image")
 
+class VirtualAvatarRequest(BaseModel):
+    prompt: str = Field(title="prompt", description="prompt text")
+    negative_prompt: str = Field(title="negative_prompt", description="negative prompt text")
+    model: str = Field(title="model", description="model")
+
+class VirtualAvatarResponse(BaseModel):
+    images: List[str] = Field(title="image list", description="image list")
+
 class PNGInfoResponse(BaseModel):
     info: str = Field(title="Image info", description="A string with the parameters used to generate the image")
     items: dict = Field(title="Items", description="An object containing all the info the image had")

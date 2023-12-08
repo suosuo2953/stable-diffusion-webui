@@ -210,6 +210,7 @@ class Api:
         self.queue_lock = queue_lock
         api_middleware(self.app)
         self.add_api_route("/sdapi/v1/txt2img", self.text2imgapi, methods=["POST"], response_model=models.TextToImageResponse)
+        self.add_api_route("/sdapi/v1/virtual-avatar", self.virtualavatar, methods=["POST"], response_model=models.VirtualAvatarResponse)
         self.add_api_route("/sdapi/v1/img2img", self.img2imgapi, methods=["POST"], response_model=models.ImageToImageResponse)
         self.add_api_route("/sdapi/v1/extra-single-image", self.extras_single_image_api, methods=["POST"], response_model=models.ExtrasSingleImageResponse)
         self.add_api_route("/sdapi/v1/extra-batch-images", self.extras_batch_images_api, methods=["POST"], response_model=models.ExtrasBatchImagesResponse)
@@ -335,6 +336,72 @@ class Api:
                     for idx in range(0, min((alwayson_script.args_to - alwayson_script.args_from), len(request.alwayson_scripts[alwayson_script_name]["args"]))):
                         script_args[alwayson_script.args_from + idx] = request.alwayson_scripts[alwayson_script_name]["args"][idx]
         return script_args
+
+    def virtualavatar(self, varreq: models.VirtualAvatarRequest):
+        payload = {
+            "prompt": varreq.prompt,
+            "negative_prompt": varreq.negative_prompt,
+            "seed": 1,
+            "steps": 20,
+            "width": 512,
+            "height": 512,
+            "cfg_scale": 7,
+            "sampler_name": "DPM++ 2M Karras",
+            "n_iter": 1,
+            "batch_size": 1,
+        }
+        params = models.StableDiffusionTxt2ImgProcessingAPI(**payload)
+        script_runner = scripts.scripts_txt2img
+        if not script_runner.scripts:
+            script_runner.initialize_scripts(False)
+            ui.create_ui()
+        if not self.default_script_arg_txt2img:
+            self.default_script_arg_txt2img = self.init_default_script_args(script_runner)
+        selectable_scripts, selectable_script_idx = self.get_selectable_script(params.script_name, script_runner)
+
+        populate = params.copy(update={  # Override __init__ params
+            "sampler_name": validate_sampler_name(params.sampler_name or params.sampler_index),
+            "do_not_save_samples": not params.save_images,
+            "do_not_save_grid": not params.save_images,
+            "override_settings": {
+                "sd_model_checkpoint": varreq.model
+            }
+        })
+        if populate.sampler_name:
+            populate.sampler_index = None  # prevent a warning later on
+
+        args = vars(populate)
+        args.pop('script_name', None)
+        args.pop('script_args', None) # will refeed them to the pipeline directly after initializing them
+        args.pop('alwayson_scripts', None)
+
+        script_args = self.init_script_args(params, self.default_script_arg_txt2img, selectable_scripts, selectable_script_idx, script_runner)
+
+        send_images = args.pop('send_images', True)
+        args.pop('save_images', None)
+
+        with self.queue_lock:
+            with closing(StableDiffusionProcessingTxt2Img(sd_model=shared.sd_model, **args)) as p:
+                p.is_api = True
+                p.scripts = script_runner
+                p.outpath_grids = opts.outdir_txt2img_grids
+                p.outpath_samples = opts.outdir_txt2img_samples
+
+                try:
+                    shared.state.begin(job="scripts_txt2img")
+                    if selectable_scripts is not None:
+                        p.script_args = script_args
+                        processed = scripts.scripts_txt2img.run(p, *p.script_args) # Need to pass args as list here
+                    else:
+                        p.script_args = tuple(script_args) # Need to pass args as tuple here
+                        processed = process_images(p)
+                finally:
+                    shared.state.end()
+                    shared.total_tqdm.clear()
+
+        b64images = list(map(encode_pil_to_base64, processed.images)) if send_images else []
+
+        return models.VirtualAvatarResponse(images=b64images)
 
     def text2imgapi(self, txt2imgreq: models.StableDiffusionTxt2ImgProcessingAPI):
         script_runner = scripts.scripts_txt2img
