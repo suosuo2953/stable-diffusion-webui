@@ -179,10 +179,13 @@ class PNGInfoRequest(BaseModel):
 class VirtualAvatarRequest(BaseModel):
     prompt: str = Field(title="prompt", description="prompt text")
     negative_prompt: str = Field(title="negative_prompt", description="negative prompt text")
-    model: str = Field(title="model", description="model")
+    model_name: str = Field(title="model name", description="model name")
+    version: str = Field(title="version", description="version")
 
 class VirtualAvatarResponse(BaseModel):
-    images: List[str] = Field(title="image list", description="image list")
+    code: int = Field(title="response code", description="response code")
+    message: str = Field(title="response message", description="response messages")
+    data: Dict[str, List[str]] = Field(title="image list", description="image list")
 
 class PNGInfoResponse(BaseModel):
     info: str = Field(title="Image info", description="A string with the parameters used to generate the image")

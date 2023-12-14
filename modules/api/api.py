@@ -364,7 +364,7 @@ class Api:
             "do_not_save_samples": not params.save_images,
             "do_not_save_grid": not params.save_images,
             "override_settings": {
-                "sd_model_checkpoint": varreq.model
+                "sd_model_checkpoint": varreq.model_name
             }
         })
         if populate.sampler_name:
@@ -400,8 +400,11 @@ class Api:
                     shared.total_tqdm.clear()
 
         b64images = list(map(encode_pil_to_base64, processed.images)) if send_images else []
-
-        return models.VirtualAvatarResponse(images=b64images)
+        data = {"images": b64images}
+        succeed = len(b64images) > 0
+        code = 200 if succeed else 500
+        message = "success" if succeed else "failed"
+        return models.VirtualAvatarResponse(code=code, data=data, message=message)
 
     def text2imgapi(self, txt2imgreq: models.StableDiffusionTxt2ImgProcessingAPI):
         script_runner = scripts.scripts_txt2img
